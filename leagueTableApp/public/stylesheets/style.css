@@ -1,0 +1,7 @@
+.hiddenRow {
+  display: none;
+}
+
+.hiddenRow.show {
+  display: table-row;
+}

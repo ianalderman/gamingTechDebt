@@ -1,0 +1,1495 @@
+DROP USER IF EXISTS LeaderBoardGenerator
+GO
+
+CREATE USER LeaderBoardGenerator WITH PASSWORD = <YOUR PASSWORD HERE>;
+GO
+
+USE MASTER
+CREATE LOGIN LeaderBoardApp WITH PASSWORD = <YOUR PASSWORD HERE>;
+GO
+USE leaderboard
+CREATE USER LeaderBoardApp FOR LOGIN LeaderBoardApp;
+GO
+
+DROP TABLE IF EXISTS AdvisorRecommendations
+GO
+
+CREATE TABLE AdvisorRecommendations (
+    id VARCHAR(256) NOT NULL PRIMARY KEY,
+    resourceId VARCHAR(8000),
+    subscriptionId CHAR(36),
+    resourceGroup VARCHAR(90),
+    dateAdded DATETIME,
+    category VARCHAR(256),
+    assessmentKey VARCHAR(256),
+    score INT,
+    impact VARCHAR(50),
+    impactedField VARCHAR(255),
+    impactedValue VARCHAR(255),
+    lastUpdated DATETIME,
+    recommendationTypeId VARCHAR(255),
+    problem VARCHAR(255),
+    solution VARCHAR(255),
+    lastRunGUID CHAR(36)
+)
+
+GO
+
+DROP TABLE IF EXISTS runSubscriptionTagValues
+GO
+
+CREATE TABLE runSubscriptionTagValues (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    runGUID CHAR(36) NOT NULL,
+    subscriptionId CHAR(36) NOT NULL,
+    level1TagValue VARCHAR(256),
+    level2TagValue VARCHAR(256),
+    level3TagValue VARCHAR(256),
+    environmentTagValue VARCHAR(256),
+    criticalityTagValue VARCHAR(256)
+)
+GO
+
+DROP TABLE IF EXISTS runResourceGroupTagValues
+GO
+
+CREATE TABLE runResourceGroupTagValues (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    runGUID CHAR(36) NOT NULL,
+    subscriptionId CHAR(36) NOT NULL,
+    resourceGroup VARCHAR(90) NOT NULL,
+    level1TagValue VARCHAR(256),
+    level2TagValue VARCHAR(256),
+    level3TagValue VARCHAR(256),
+    environmentTagValue VARCHAR(256),
+    criticalityTagValue VARCHAR(256)
+)
+GO
+
+DROP PROC IF EXISTS getSubscriptionListForRun001
+GO
+
+CREATE PROCEDURE getSubscriptionListForRun001 @runGUID CHAR(36) AS
+    --If new tables are added they will need to be included in this...
+    SELECT DISTINCT subscriptionId FROM AdvisorRecommendations WHERE lastRunGUID = @runGUID
+GO
+
+GRANT EXECUTE ON getSubscriptionListForRun001 TO LeaderBoardGenerator
+GO
+
+DROP PROC IF EXISTS getResourceGroupListForRun001
+GO
+
+CREATE PROCEDURE getResourceGroupListForRun001 @runGUID CHAR(36), @subscriptionId CHAR(36) AS
+    --If new tables are added they will need to be included in this...
+    SELECT DISTINCT resourceGroup FROM AdvisorRecommendations WHERE lastRunGUID = @runGUID AND subscriptionId = @subscriptionId
+GO
+
+GRANT EXECUTE ON getResourceGroupListForRun001 TO LeaderBoardGenerator
+GO
+
+DROP PROC IF EXISTS insertRunSubscriptionTagValues
+GO
+
+CREATE PROCEDURE insertRunSubscriptionTagValues (
+    @runGUID CHAR(36), 
+    @subscriptionId CHAR(36), 
+    @level1TagValue VARCHAR(256) = NULL, 
+    @level2TagValue VARCHAR(256) = NULL, 
+    @level3TagValue VARCHAR(256) = NULL, 
+    @environmentTagValue VARCHAR(256) = NULL, 
+    @criticalityTagValue VARCHAR(256) = NULL
+    ) AS
+
+    INSERT INTO runSubscriptionTagValues (runGUID, subscriptionId, level1TagValue,  level2TagValue, level3TagValue, environmentTagValue, criticalityTagValue) VALUES (@runGUID, @subscriptionId, @level1TagValue, @level2TagValue, @level3TagValue, @environmentTagValue, @criticalityTagValue)
+GO
+
+GRANT EXECUTE ON insertRunSubscriptionTagValues TO LeaderBoardGenerator
+GO
+
+DROP PROC IF EXISTS insertRunResourceGroupTagValues
+GO
+
+CREATE PROCEDURE insertRunResourceGroupTagValues (
+    @runGUID CHAR(36), 
+    @subscriptionId CHAR(36),
+    @resourceGroup CHAR(90),
+    @level1TagValue VARCHAR(256) = NULL, 
+    @level2TagValue VARCHAR(256) = NULL, 
+    @level3TagValue VARCHAR(256) = NULL, 
+    @environmentTagValue VARCHAR(256) = NULL, 
+    @criticalityTagValue VARCHAR(256) = NULL
+    ) AS
+
+    INSERT INTO runResourceGroupTagValues (runGUID, subscriptionId, resourceGroup, level1TagValue,  level2TagValue, level3TagValue, environmentTagValue, criticalityTagValue) VALUES (@runGUID, @subscriptionId, @resourceGroup, @level1TagValue, @level2TagValue, @level3TagValue, @environmentTagValue, @criticalityTagValue)
+GO
+
+GRANT EXECUTE ON insertRunResourceGroupTagValues TO LeaderBoardGenerator
+GO
+
+DROP PROC IF EXISTS upsertAdvisorRecommendations001
+GO
+
+CREATE PROC upsertAdvisorRecommendations001 (
+    @id VARCHAR(256),
+    @resourceId VARCHAR(8000) ,
+    @category VARCHAR(256), 
+    @assessmentKey VARCHAR(256) = NULL,
+    @score INT = NULL,
+    @impact VARCHAR(50) = NULL,
+    @impactedField VARCHAR(255) = NULL,
+    @impactedValue VARCHAR(255) = NULL,
+    @recommendationTypeId VARCHAR(255),
+    @problem VARCHAR(255),
+    @solution VARCHAR(255),
+    @runGUID CHAR(36)
+    ) AS
+
+    SET NOCOUNT ON
+    --Need to split out sub and resource group from Id
+    DECLARE @subscriptionId CHAR(36), @resourceGroup VARCHAR(90)
+
+    
+    --Assuming that bulk of the operations on the table will be update as lifecycle of recommendations means they hang around
+    UPDATE AdvisorRecommendations SET lastUpdated = GETDATE(), lastRunGUID = @runGUID WHERE id = @id
+
+    IF @@ROWCOUNT = 0
+        SET @subscriptionId = SUBSTRING(@resourceId, 16, 36)
+        IF PATINDEX('%/resourceGroups/%', @resourceId) > 0
+                SET @resourceGroup = SUBSTRING(@resourceId, 68, (PATINDEX('%/providers/%', @resourceId) - 68))
+        ELSE
+                SET @resourceGroup = NULL                
+
+        INSERT INTO AdvisorRecommendations (
+            id,
+            resourceId, 
+            subscriptionId, 
+            resourceGroup, 
+            dateAdded, 
+            category, 
+            assessmentKey, 
+            score, 
+            impact, 
+            impactedField, 
+            impactedValue, 
+            lastUpdated, 
+            recommendationTypeId, 
+            problem, 
+            solution, 
+            lastRunGUID
+            ) VALUES (
+                @id,
+                @resourceId,
+                @subscriptionId,
+                @resourceGroup,
+                GETDATE(),
+                @category,
+                @assessmentKey,
+                @score,
+                @impact,
+                @impactedField,
+                @impactedValue,
+                GETDATE(),
+                @recommendationTypeId,
+                @problem,
+                @solution,
+                @runGUID
+            )
+GO
+
+GRANT EXECUTE ON upsertAdvisorRecommendations001 TO LeaderBoardGenerator
+GO
+
+DROP PROC IF EXISTS  upsertAdvisorRecommendations002
+GO
+
+CREATE PROC upsertAdvisorRecommendations002 (@recommendationsJSON NVARCHAR(MAX), @runGUID CHAR(36)) AS
+
+
+DECLARE @id VARCHAR(256), 
+    @category VARCHAR(256), 
+    @assessmentKey VARCHAR(256),
+    @score INT,
+    @impact VARCHAR(50),
+    @impactedField VARCHAR(255),
+    @impactedValue VARCHAR(255),
+    @recommendationTypeId VARCHAR(255),
+    @problem VARCHAR(255),
+    @solution VARCHAR(255),
+    @recommendationName VARCHAR(255)
+
+SET @recommendationsJSON = LEFT(@recommendationsJSON, len(@recommendationsJSON) - 1)
+SET @recommendationsJSON = RIGHT(@recommendationsJSON, len(@recommendationsJSON) - 1)
+
+DECLARE recommendations CURSOR  
+    FOR select * from OPENJSON(@recommendationsJSON) with (
+    id NVARCHAR(255) '$.id',
+    category NVARCHAR(255) '$.properties.category',
+    assessmentKey NVARCHAR(255) '$.properties.extendedProperties.assessmentKey',
+    score int '$.properties.extendedProperties.score',
+    impact NVARCHAR(255) '$.properties.impact',
+    impactedField NVARCHAR(255) '$.properties.impactedField',
+    impactedValue NVARCHAR(255) '$.properties.impactedValue',
+    recommendationTypeId NVARCHAR(255) '$.properties.impactedValue',
+    problem NVARCHAR(255) '$.properties.shortDescription.problem',
+    solution NVARCHAR(255) '$.properties.shortDescription.solution',
+    recommendationName NVARCHAR(255) '$.name'
+    );
+
+OPEN recommendations  
+  
+FETCH NEXT FROM recommendations   
+INTO @id,
+                @category,
+                @assessmentKey,
+                @score,
+                @impact,
+                @impactedField,
+                @impactedValue,
+                @recommendationTypeId,
+                @problem,
+                @solution,
+                @recommendationName
+  
+WHILE @@FETCH_STATUS = 0  
+BEGIN  
+    --Need to split out sub and resource group from Id
+    DECLARE @subscriptionId CHAR(36), @resourceGroup VARCHAR(90)
+
+    
+    --Assuming that bulk of the operations on the table will be update as lifecycle of recommendations means they hang around
+    UPDATE AdvisorRecommendations SET lastUpdated = GETDATE(), lastRunGUID = @runGUID WHERE id = @id
+
+    IF @@ROWCOUNT = 0 BEGIN
+        SET @subscriptionId = SUBSTRING(@id, 16, 36)
+        SET @resourceGroup = SUBSTRING(@id, 68, (PATINDEX('%/providers/%', @id) - 68))
+
+        INSERT INTO AdvisorRecommendations (
+            id, 
+            subscriptionId, 
+            resourceGroup, 
+            dateAdded, 
+            category, 
+            assessmentKey, 
+            score, 
+            impact, 
+            impactedField, 
+            impactedValue, 
+            lastUpdated, 
+            recommendationTypeId, 
+            problem, 
+            solution, 
+            recommendationName, 
+            lastRunGUID
+            ) VALUES (
+                @id,
+                @subscriptionId,
+                @resourceGroup,
+                GETDATE(),
+                @category,
+                @assessmentKey,
+                @score,
+                @impact,
+                @impactedField,
+                @impactedValue,
+                GETDATE(),
+                @recommendationTypeId,
+                @problem,
+                @solution,
+                @recommendationName,
+                @runGUID
+            )
+    END
+    FETCH NEXT FROM recommendations; 
+END
+CLOSE recommendations;  
+DEALLOCATE recommendations;   
+GO
+
+GRANT EXECUTE ON upsertAdvisorRecommendations002 TO LeaderBoardGenerator
+GO
+
+CREATE TABLE runBudgets (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    runGUID CHAR(36),
+    subscriptionId CHAR(36),
+    resourceGroup VARCHAR(90),
+    budgetId VARCHAR(2000),
+    budgetName VARCHAR(255),
+    amount SMALLMONEY,
+    timeGrain VARCHAR(50),
+    startDate DATETIME,
+    endDate DATETIME,
+    currentSpend SMALLMONEY,
+    currency VARCHAR(10),
+    budgetFilter VARCHAR(8000)
+)
+
+GO
+
+DROP PROC IF EXISTS  insertRunBudgets
+GO
+
+CREATE PROC insertRunBudgets (@runGUID CHAR(36), 
+    @subscriptionId CHAR(36), 
+    @resourceGroup VARCHAR(90) = NULL, 
+    @budgetId VARCHAR(2000),
+    @budgetName VARCHAR(255),
+    @amount SMALLMONEY,
+    @timeGrain VARCHAR(50),
+    @startDate DATETIME,
+    @endDate DATETIME,
+    @currentSpend SMALLMONEY,
+    @currency VARCHAR(10),
+    @budgetFilter VARCHAR(8000)
+) AS
+
+    INSERT INTO runBudgets (
+        runGUID,
+        subscriptionId,
+        resourceGroup,
+        budgetId,
+        budgetName,
+        amount,
+        timeGrain,
+        startDate,
+        endDate,
+        currentSpend,
+        currency,
+        budgetFilter
+    ) VALUES (
+        @runGUID,
+        @subscriptionId,
+        @resourceGroup,
+    
+        @budgetId,
+        @budgetName,
+        @amount,
+        @timeGrain,
+        @startDate,
+        @endDate,
+        @currentSpend,
+        @currency,
+        @budgetFilter
+    )
+
+GO
+
+GRANT EXECUTE ON insertRunBudgets TO LeaderBoardGenerator
+GO
+
+DROP TABLE IF EXISTS runSettings
+GO
+
+CREATE TABLE runSettings (
+    runGUID CHAR(36) NOT NULL PRIMARY KEY,
+    runDateTime DATETIME DEFAULT GETDATE(),
+    GroupingLevel1 VARCHAR(255),
+    GroupingLevel2 VARCHAR(255),
+    GroupingLevel3 VARCHAR(255),
+    EnvironmentProduction VARCHAR(255),
+    EnvironmentProductionMultiplier TINYINT,
+    EnvironmentNonProduction VARCHAR(255),
+    EnvironmentNonProductionMultiplier TINYINT,
+    EnvironmentDev VARCHAR(255),
+    EnvironmentDevMultiplier TINYINT,
+    CriticalityTier0 VARCHAR(255),
+    CriticalityTier0Multiplier TINYINT,
+    CriticalityTier1 VARCHAR(255),
+    CriticalityTier1Multiplier TINYINT,
+    CriticalityTier2 VARCHAR(255),
+    Criticalitytier2Multiplier TINYINT,
+    Processed BIT DEFAULT 0
+)
+
+GO
+
+DROP PROC IF EXISTS insertRunSettings
+GO
+
+CREATE PROC insertRunSettings (
+    @runGUID CHAR(36),
+    @GroupingLevel1 VARCHAR(255),
+    @GroupingLevel2 VARCHAR(255) = NULL,
+    @GroupingLevel3 VARCHAR(255) = NULL,
+    @EnvironmentProduction VARCHAR(255) = NULL,
+    @EnvironmentProductionMultiplier TINYINT  = NULL,
+    @EnvironmentNonProduction VARCHAR(255) = NULL,
+    @EnvironmentNonProductionMultiplier TINYINT = NULL,
+    @EnvironmentDev VARCHAR(255) = NULL,
+    @EnvironmentDevMultiplier TINYINT = NULL,
+    @CriticalityTier0 VARCHAR(255) = NULL,
+    @CriticalityTier0Multiplier TINYINT = NULL,
+    @CriticalityTier1 VARCHAR(255) = NULL,
+    @CriticalityTier1Multiplier TINYINT = NULL,
+    @CriticalityTier2 VARCHAR(255) = NULL,
+    @Criticalitytier2Multiplier TINYINT = NULL
+) AS
+
+INSERT INTO runSettings (
+    runGUID,
+    GroupingLevel1,
+    GroupingLevel2,
+    GroupingLevel3,
+    EnvironmentProduction,
+    EnvironmentProductionMultiplier,
+    EnvironmentNonProduction,
+    EnvironmentNonProductionMultiplier,
+    EnvironmentDev,
+    EnvironmentDevMultiplier,
+    CriticalityTier0,
+    CriticalityTier0Multiplier,
+    CriticalityTier1,
+    CriticalityTier1Multiplier,
+    CriticalityTier2,
+    Criticalitytier2Multiplier
+) VALUES (
+    @runGUID,
+    @GroupingLevel1,
+    @GroupingLevel2,
+    @GroupingLevel3,
+    @EnvironmentProduction,
+    @EnvironmentProductionMultiplier,
+    @EnvironmentNonProduction,
+    @EnvironmentNonProductionMultiplier,
+    @EnvironmentDev,
+    @EnvironmentDevMultiplier,
+    @CriticalityTier0,
+    @CriticalityTier0Multiplier,
+    @CriticalityTier1,
+    @CriticalityTier1Multiplier,
+    @CriticalityTier2,
+    @Criticalitytier2Multiplier
+)
+
+GO
+
+GRANT EXECUTE ON insertRunSettings TO LeaderBoardGenerator
+GO
+
+DROP VIEW IF EXISTS latestRunValues
+GO
+
+CREATE VIEW latestRunValues AS
+
+SELECT 
+    AR.*,
+    RGTV.level1TagValue AS rgLevel1,
+    RGTV.level2TagValue AS rgLevel2,
+    RGTV.level3TagValue AS rgLevel3,
+    RGTV.environmentTagValue AS rgEnvironment,
+    RGTV.criticalityTagValue AS rgCriticality,
+    STV.level1TagValue AS subLevel1,
+    STV.level2TagValue AS subLevel2,
+    STV.level3TagValue AS subLevel3,
+    STV.environmentTagValue AS subEnvironment,
+    STV.criticalityTagValue AS subCriticality
+FROM
+    (SELECT 
+        id AS recommendationId,
+        lastRUNGUID AS runGUID,
+        subscriptionId,
+        resourceGroup,
+        DATEDIFF(day,dateAdded, GETDATE()) AS Age,
+        category,
+        score,
+        impact
+    FROM
+        [dbo].[AdvisorRecommendations]
+    WHERE lastRUNGUID = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC)
+    ) AR
+ LEFT JOIN 
+    (SELECT 
+        *
+    FROM 
+        runResourceGroupTagValues
+    WHERE runGUID = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC)
+    ) RGTV ON AR.resourceGroup = RGTV.resourceGroup AND AR.subscriptionId = RGTV.subscriptionId
+LEFT JOIN 
+    (SELECT
+        *
+    FROM
+        runSubscriptionTagValues
+    WHERE runGUID = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC)
+    ) STV ON AR.subscriptionId = STV.subscriptionId
+
+GO
+
+DROP TABLE IF EXISTS runTechDebtPointsScores
+GO
+
+CREATE TABLE runTechDebtPointsScores (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    recommendationId VARCHAR(256) NOT NULL,
+    runGUID CHAR(36) NOT NULL,
+    groupingLevel1 VARCHAR(256),
+    groupingLevel2 VARCHAR(256),
+    groupingLevel3 VARCHAR(256),
+    environmentValue VARCHAR(256),
+    criticalityValue VARCHAR(256),
+    impact VARCHAR(256),
+    category VARCHAR(256),
+    technicalDebtPoints INT
+)
+
+GO
+
+DROP PROC IF EXISTS generateLatestLeaderboard
+GO
+
+CREATE PROC generateLatestLeaderboard AS
+
+--Declare the many variables we need...
+DECLARE @runGUID CHAR(36), @runDateTime DATETIME, @GroupingLevel1 VARCHAR(255)
+DECLARE @GroupingLevel2 VARCHAR(255), @GroupingLevel3 VARCHAR(255), @EnvironmentProduction VARCHAR(255)
+DECLARE @EnvironmentProductionMultiplier INT, @EnvironmentNonProduction VARCHAR(255), @EnvironmentNonProductionMultiplier INT
+DECLARE @EnvironmentDev VARCHAR(255), @EnvironmentDevMultiplier INT, @CriticalityTier0 VARCHAR(255)
+DECLARE @CriticalityTier0Multiplier INT, @CriticalityTier1 VARCHAR(255), @CriticalityTier1Multiplier INT
+DECLARE @CriticalityTier2 VARCHAR(255), @CriticalityTier2Multiplier INT
+DECLARE @HighImpactBaseScore INT, @MediumImpactBaseScore INT, @LowImpactBaseScore INT
+
+--Alter these values to determine how much the Recommendation's impact drives the score
+SET @HighImpactBaseScore = 5
+SET @MediumImpactBaseScore = 3
+SET @LowImpactBaseScore = 1
+
+--Load the latest run's configuration
+SELECT TOP 1
+    @runGUID = runGUID, 
+    @runDateTime = runDateTime, 
+    @GroupingLevel1 = GroupingLevel1,
+    @GroupingLevel2 = GroupingLevel2,
+    @GroupingLevel3 = GroupingLevel3,
+    @EnvironmentProduction = EnvironmentProduction,
+    @EnvironmentProductionMultiplier = EnvironmentProductionMultiplier,
+    @EnvironmentNonProduction = EnvironmentNonProduction,
+    @EnvironmentNonProductionMultiplier = EnvironmentNonProductionMultiplier,
+    @EnvironmentDev = EnvironmentDev,
+    @EnvironmentDevMultiplier = EnvironmentDevMultiplier,
+    @CriticalityTier0 = CriticalityTier0,
+    @CriticalityTier0Multiplier = CriticalityTier0Multiplier,
+    @CriticalityTier1 = CriticalityTier1,
+    @CriticalityTier1Multiplier = CriticalityTier1Multiplier,
+    @CriticalityTier2 = CriticalityTier2,
+    @CriticalityTier2Multiplier = CriticalityTier2Multiplier
+FROM
+    runSettings
+WHERE Processed = 0
+ORDER BY
+    runDateTime DESC
+
+/*
+ToDo:
+ADD A STEP IF RG TAGS NOT SPECIFIFIED REPLACE WITH SUB ONES
+*/
+-- In case this proc is run multiple times for the same run clear exisiting entries
+DELETE FROM runTechDebtPointsScores WHERE runGUID = @runGUID
+-- Seed the scoring table with this run
+INSERT INTO 
+    runTechDebtPointsScores ( 
+        recommendationId,
+        runGUID,
+        groupingLevel1,
+        groupingLevel2,
+        groupingLevel3,
+        environmentValue,
+        criticalityValue,
+        impact,
+        category
+    )
+SELECT 
+        recommendationId,
+        runGUID,
+        rgLevel1,
+        rgLevel2,
+        rgLevel3,
+        rgEnvironment,
+        rgCriticality,
+        impact,
+        category
+FROM 
+    latestRunValues
+
+--Generate High, Tier0, Production Scores
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier0
+--High, Tier1, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier1
+--High, Tier2, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier2
+--Medium, Tier0, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier0
+--Medium, Tier1, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier1
+--Medium, Tier2, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier2
+--Low, Tier0, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier0
+--Low, Tier1, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier1
+--Low, Tier2, Production
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentProduction AND criticalityValue =  @CriticalityTier2
+--Generate High, Tier0, NonProduction Scores
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier0
+--High, Tier1, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier1
+--High, Tier2, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier2
+--Medium, Tier0, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier0
+--Medium, Tier1, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier1
+--Medium, Tier2, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier2
+--Low, Tier0, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier0
+--Low, Tier1, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier1
+--Low, Tier2, NonProduction
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentNonProductionMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentNonProduction AND criticalityValue =  @CriticalityTier2
+--Generate High, Tier0, Dev Scores
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier0
+--High, Tier1, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier1
+--High, Tier2, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'High' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier2
+--Medium, Tier0, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier0
+--Medium, Tier1, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier1
+--Medium, Tier2, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@MediumImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Medium' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier2
+--Low, Tier0, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier0Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier0
+--Low, Tier1, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier1Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier1
+--Low, Tier2, Dev
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@LowImpactBaseScore * @EnvironmentDevMultiplier * @CriticalityTier2Multiplier) WHERE runGUID = @runGUID AND impact = 'Low' AND environmentValue = @EnvironmentDev AND criticalityValue =  @CriticalityTier2
+
+--Decorate Unknown
+UPDATE runTechDebtPointsScores SET groupingLevel1 = 'Unknown' WHERE ISNULL(groupingLevel1,'') = '' AND runGUID = @runGUID
+UPDATE runTechDebtPointsScores SET groupingLevel2 = 'Unknown' WHERE ISNULL(groupingLevel2,'') = '' AND runGUID = @runGUID
+UPDATE runTechDebtPointsScores SET groupingLevel3 = 'Unknown' WHERE ISNULL(groupingLevel3,'') = '' AND runGUID = @runGUID
+UPDATE runTechDebtPointsScores SET environmentValue = 'Unknown' WHERE ISNULL(environmentValue,'') = '' AND runGUID = @runGUID
+UPDATE runTechDebtPointsScores SET criticalityValue = 'Unknown' WHERE ISNULL(criticalityValue,'') = '' AND runGUID = @runGUID
+
+--Set Tech Debt points high for unknown, un-scored as they are an unquatified risk
+UPDATE runTechDebtPointsScores SET technicalDebtPoints = (@HighImpactBaseScore * @EnvironmentProductionMultiplier * @CriticalityTier0Multiplier) WHERE technicalDebtPoints IS NULL and runGUID = @runGUID
+
+--Mark the run as Processed
+UPDATE runSettings SET Processed = 1 WHERE runGUID = @runGUID
+GO
+
+GRANT EXECUTE ON generateLatestLeaderboard TO LeaderBoardGenerator
+GO
+
+--ADD TAG FOR DATA SENSITIVITY
+
+SELECT 
+    groupingLevel1, 
+    groupingLevel2, 
+    groupingLevel3, 
+    environmentValue, 
+    criticalityValue, 
+    category, 
+    impact,
+    COUNT(id) AS RecommendationCount, 
+    SUM(technicaldebtpoints) AS TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE 
+    runguid = @runGUID
+GROUP BY 
+    groupingLevel1, 
+    groupingLevel2, 
+    groupingLevel3, 
+    environmentValue, 
+    criticalityValue, 
+    category, 
+    impact 
+ORDER BY 
+    groupingLevel1,
+    groupingLevel2,
+    groupingLevel3 ASC
+FOR JSON AUTO
+
+/*
+CREATE TABLE leaderboard (
+    ID UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    runGUID CHAR(36),
+    groupingLevel1 VARCHAR(255),
+    groupingLevel2 VARCHAR(255),
+    groupingLevel3 VARCHAR(255),
+
+)
+*/
+
+/*
+SELECT 
+    groupingLevel1, 
+    SUM(technicalDebtPoints) AS l1TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE 
+    runGuid = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC) GROUP BY groupingLevel1
+ORDER BY
+    groupingLevel1 ASC
+FOR JSON AUTO
+
+SELECT 
+    groupingLevel1, 
+    groupingLevel2, 
+    SUM(technicalDebtPoints) AS l2TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE runGuid = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC) GROUP BY groupingLevel1, groupingLevel2
+ORDER BY
+    groupingLevel1, groupingLevel2 ASC
+FOR JSON AUTO
+
+SELECT 
+    groupingLevel1, 
+    groupingLevel2, 
+    groupingLevel3, 
+    SUM(technicalDebtPoints) AS l3TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE runGuid = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1  ORDER BY runDateTime DESC) GROUP BY groupingLevel1, groupingLevel2, groupingLevel3
+ORDER BY
+    groupingLevel1, groupingLevel2, groupingLevel3 ASC
+FOR JSON AUTO
+
+SELECT
+    *
+FROM
+    (SELECT
+        groupingLevel1,
+        category,
+        technicalDebtPoints
+    FROM
+        runTechDebtPointsScores
+    WHERE
+        runGUID = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC)
+    ) t1
+    PIVOT (
+        SUM(technicalDebtPoints) FOR category IN ([Cost],[HighAvailability], [OperationalExcellence], [Performance], [Security])
+    ) pvt
+
+SELECT
+    *
+FROM
+    (SELECT
+        groupingLevel1,
+        category,
+        impact,
+        technicalDebtPoints
+    FROM
+        runTechDebtPointsScores
+    WHERE
+        runGUID = (SELECT TOP 1 runGUID FROM runSettings WHERE Processed = 1 ORDER BY runDateTime DESC)
+    ) t1
+    PIVOT (
+        SUM(technicalDebtPoints) FOR impact IN ([High],[Medium], [Low])
+    ) pvt
+FOR JSON AUTO
+
+SELECT
+    *
+FROM
+    (SELECT
+        groupingLevel1,
+        groupingLevel2,
+        environmentValue,
+        criticalityValue,
+        category,
+        impact,
+        technicalDebtPoints
+    FROM
+        runTechDebtPointsScores
+    WHERE
+        runGUID = (SELECT TOP 1 runGUID FROM runSettings  where processed = 1 ORDER BY runDateTime DESC)
+    ) t1
+    PIVOT (
+        SUM(technicalDebtPoints) FOR impact IN ([High],[Medium], [Low])
+    ) pvt ORDER BY groupingLevel1, groupingLevel2, environmentValue, criticalityValue
+FOR JSON AUTO
+*/
+DROP PROC IF EXISTS getGroupingLevel1Totals001
+GO
+
+CREATE PROC getGroupingLevel1Totals001 AS
+
+DECLARE @runGUID CHAR(36) = (SELECT TOP 1 runGUID FROM runSettings ORDER BY runDateTime DESC)
+--DECLARE @lastRunGUID CHAR(36) = (SELECT runGUID FROM (SELECT TOP 2 ROW_NUMBER() OVER(ORDER BY runDateTime DESC) AS RowNumber, runGUID FROM runSettings ORDER BY runDateTime DESC) a WHERE RowNumber = 2) 
+
+SELECT 
+    groupingLevel1, 
+    category, 
+    impact,
+    COUNT(id) AS RecommendationCount, 
+    SUM(technicaldebtpoints) AS TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE 
+    runguid = @runGUID
+GROUP BY 
+    groupingLevel1, 
+    category, 
+    impact 
+ORDER BY 
+    groupingLevel1 ASC
+FOR JSON AUTO
+GO
+
+GRANT EXECUTE ON getGroupingLevel1Totals001 TO LeaderBoardApp
+GO
+
+DROP PROC IF EXISTS getGroupingLevel2Totals001
+GO
+
+CREATE PROC getGroupingLevel2Totals001 AS
+
+DECLARE @runGUID CHAR(36) = (SELECT TOP 1 runGUID FROM runSettings ORDER BY runDateTime DESC)
+--DECLARE @lastRunGUID CHAR(36) = (SELECT runGUID FROM (SELECT TOP 2 ROW_NUMBER() OVER(ORDER BY runDateTime DESC) AS RowNumber, runGUID FROM runSettings ORDER BY runDateTime DESC) a WHERE RowNumber = 2) 
+
+SELECT 
+    groupingLevel1,
+	groupingLevel2,
+    category, 
+    impact,
+    COUNT(id) AS RecommendationCount, 
+    SUM(technicaldebtpoints) AS TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE 
+    runguid = @runGUID
+GROUP BY 
+    groupingLevel1, 
+	groupingLevel2,
+    category, 
+    impact 
+ORDER BY 
+    groupingLevel1 ASC,
+	groupingLevel2 ASC
+FOR JSON AUTO
+GO
+
+GRANT EXECUTE ON getGroupingLevel2Totals001 TO LeaderBoardApp
+GO
+
+DROP PROC IF EXISTS getTechDebtPointScores001
+GO
+
+CREATE PROC getTechDebtPointScores001 AS
+
+DECLARE @runGUID CHAR(36) = (SELECT TOP 1 runGUID FROM runSettings ORDER BY runDateTime DESC)
+DECLARE @lastRunGUID CHAR(36) = (SELECT runGUID FROM (SELECT TOP 2 ROW_NUMBER() OVER(ORDER BY runDateTime DESC) AS RowNumber, runGUID FROM runSettings ORDER BY runDateTime DESC) a WHERE RowNumber = 2) 
+
+SELECT 
+    groupingLevel1,
+	groupingLevel2,
+	environmentValue,
+	criticalityValue,
+    category, 
+    impact,
+    COUNT(id) AS RecommendationCount, 
+    SUM(technicaldebtpoints) AS TechDebtPoints 
+FROM 
+    runTechDebtPointsScores 
+WHERE 
+    runguid = @runGUID
+GROUP BY 
+    groupingLevel1, 
+	groupingLevel2,
+	environmentValue,
+	criticalityValue,
+    category, 
+    impact 
+ORDER BY 
+    groupingLevel1 ASC,
+	groupingLevel2 ASC,
+	environmentValue ASC,
+	criticalityValue ASC
+FOR JSON AUTO
+
+GO
+
+GRANT EXECUTE ON getTechDebtPointScores001 TO LeaderBoardApp
+GO
+
+DROP PROC IF EXISTS getLastRunSettings001
+GO
+
+CREATE PROC getLastRunSettings001 AS
+
+SELECT TOP 1 * FROM runSettings ORDER BY runDateTime DESC
+
+GO
+
+GRANT EXECUTE ON getLastRunSettings001 TO LeaderBoardApp
+GO
+
+DROP TABLE IF EXISTS groupDefinition
+GO
+
+CREATE TABLE groupDefinition (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    level INT,
+    parentiId UNIQUEIDENTIFIER,
+    name VARCHAR(255) NOT NULL,
+    budget INT,
+    ownerEmail  VARCHAR(255),
+    departmentEmail VARCHAR(255)
+)
+GO
+
+DROP TABLE IF EXISTS policyRecords
+GO
+
+CREATE TABLE policyRecords(
+    ID UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    resourceId VARCHAR(8000),
+    subscriptionId CHAR(36),
+    isCompliant BIT,
+    resourceGroup VARCHAR(90),
+    policyDefinitionId VARCHAR(8000),
+    resourceType VARCHAR(500),
+    policyAssignmentName VARCHAR(500),
+    dateAdded DATETIME DEFAULT GETDATE(),
+    lastUpdated DATETIME DEFAULT GETDATE(),
+    lastRUNGUID CHAR(36)
+)
+GO
+
+/*
+DROP PROC IF EXISTS  upsertPolicyRecords001
+GO
+
+CREATE PROCEDURE upsertPolicyRecords001 (
+    @resourceId VARCHAR(8000), 
+    @subscriptionId CHAR(36),
+    @resourceGroup VARCHAR(90),
+    @isCompliant BIT,
+    @policyDefinitionId VARCHAR(8000),
+    @resourceType VARCHAR(500),
+    @policyAssignmentName VARCHAR(500),
+    @runGUID UNIQUEIDENTIFIER) AS
+
+    UPDATE policyRecords SET lastUpdated = GETDATE(), lastRUNGUID = @runGUID WHERE resourceId = @resourceId AND policyDefinitionId = @policyDefinitionId
+
+    IF @@ROWCOUNT = 0
+        BEGIN
+            INSERT INTO policyRecords (
+                resourceId,
+                subscriptionId,
+                resourceGroup,
+                isCompliant,
+                policyDefinitionId,
+                resourceType,
+                policyAssignmentName,
+                lastRUNGUID,
+                dateAdded,
+                lastUpdated
+            ) VALUES (
+                @resourceId,
+                @subscriptionId,
+                @resourceGroup,
+                @isCompliant,
+                @policyDefinitionId,
+                @resourceType,
+                @policyAssignmentName,
+                @runGUID,
+                GETDATE(),
+                GETDATE()
+            )
+        END
+GO
+
+GRANT EXECUTE ON upsertPolicyRecords001 TO LeaderBoardApp
+GO
+*/
+
+DROP PROC IF EXISTS getSubscriptionListForRun002
+GO
+
+CREATE PROCEDURE getSubscriptionListForRun002 @runGUID CHAR(36) AS
+    --If new tables are added they will need to be included in this...
+    SELECT DISTINCT subscriptionId FROM 
+    (SELECT DISTINCT subscriptionId FROM AdvisorRecommendations WHERE lastRunGUID = @runGUID) a
+    UNION
+    (SELECT DISTINCT subscriptionId FROM policyRecords WHERE lastRunGUID = @runGUID) 
+GO
+
+GRANT EXECUTE ON getSubscriptionListForRun002 TO LeaderBoardGenerator
+GO
+
+DROP PROC IF EXISTS getResourceGroupListForRun002
+GO
+
+CREATE PROCEDURE getResourceGroupListForRun002 @runGUID CHAR(36) AS
+    --If new tables are added they will need to be included in this...
+    SELECT DISTINCT resourceGroup FROM
+    (SELECT DISTINCT resourceGroup FROM AdvisorRecommendations WHERE lastRunGUID = @runGUID) A
+    UNION
+    (SELECT DISTINCT resourceGroup FROM policyRecords WHERE lastRunGUID = @runGUID)
+GO
+
+GRANT EXECUTE ON getResourceGroupListForRun002 TO LeaderBoardGenerator
+GO
+
+DROP USER IF EXISTS [adf-ne-techdebtleague]
+GO
+CREATE USER [adf-ne-techdebtleague] FROM EXTERNAL PROVIDER;
+GO
+
+GRANT EXECUTE ON getResourceGroupListForRun002 TO [adf-ne-techdebtleague]
+GO
+
+GRANT EXECUTE ON upsertPolicyRecords001 TO [adf-ne-techdebtleague]
+
+DROP TABLE IF EXISTS staging_policyRecords
+GO
+
+CREATE TABLE staging_policyRecords(
+    resourceId VARCHAR(8000),
+    subscriptionId CHAR(36),
+    isCompliant BIT,
+    resourceGroup VARCHAR(90),
+    policyDefinitionId VARCHAR(8000),
+    resourceType VARCHAR(500),
+    policyAssignmentName VARCHAR(500)
+)
+GO
+
+GRANT SELECT, INSERT ON staging_policyRecords TO [adf-ne-techdebtleague]
+GO
+
+
+
+DROP PROC IF EXISTS mergePolicyRecords001
+GO
+
+CREATE PROCEDURE mergePolicyRecords001 @runGUID CHAR(36) AS
+SET NOCOUNT ON;  
+  
+MERGE policyRecords AS target
+	USING (SELECT * FROM staging_policyRecords) AS source
+	ON (target.resourceId = source.resourceId AND target.policyDefinitionId = source.policyDefinitionId)
+	WHEN MATCHED THEN
+		UPDATE SET lastUpdated = GETDATE(), lastRunGUID = @runGUID
+	WHEN NOT MATCHED THEN
+		INSERT (resourceId, subscriptionId, isCompliant, resourceGroup, policyDefinitionId, resourceType, policyAssignmentName, dateAdded, lastUpdated, lastRunGUID)
+		VALUES (source.resourceId, source.subscriptionId, source.isCompliant, source.resourceGroup, source.policyDefinitionId, source.resourceType, source.policyAssignmentName, GETDATE(), GETDATE(), @runGUID);
+
+GO
+
+GRANT EXEC ON mergePolicyRecords001 TO [adf-ne-techdebtleague]
+GO
+
+DROP PROC IF EXISTS mergeAdvisorRecommendations001
+GO
+
+CREATE PROCEDURE mergeAdvisorRecommendations001 @runGUID CHAR(36) AS
+SET NOCOUNT ON;  
+  
+MERGE AdvisorRecommendations AS target
+	USING (SELECT * FROM staging_recommendations) AS source
+	ON (target.id = source.id)
+	WHEN MATCHED THEN
+		UPDATE SET lastUpdated = GETDATE(), lastRunGUID = @runGUID
+	WHEN NOT MATCHED THEN
+		INSERT (id, resourceId, subscriptionId, resourceGroup, dateAdded, category, assessmentKey, score, impact, impactedField, impactedValue, lastUpdated, recommendationTypeId, problem, solution, lastRunGUID)
+		VALUES (id, resourceId, SUBSTRING(resourceId, 16, 36), IIF(PATINDEX('%/resourceGroups/%', resourceId) > 0,SUBSTRING(resourceId, 68, (PATINDEX('%/providers/%', resourceId) - 68)),null),GETDATE(), category, assessmentKey, score, impact, impactedField, impactedValue, GETDATE(), recommendationTypeId, problem, solution, @runGUID);
+GO
+
+GRANT EXEC ON mergeAdvisorRecommendations001 TO [adf-ne-techdebtleague]
+GO
+
+DROP TABLE IF EXISTS runResourceGroupValues
+GO
+
+CREATE TABLE runResourceGroupValues (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    runGUID CHAR(36) NOT NULL,
+    subscriptionId CHAR(36) NOT NULL,
+    resourceGroup VARCHAR(90) NOT NULL,
+    level1TagValue VARCHAR(256),
+    level2TagValue VARCHAR(256),
+    level3TagValue VARCHAR(256),
+    environmentTagValue VARCHAR(256),
+    criticalityTagValue VARCHAR(256),
+    compliantResourceCount INT,
+    nonCompliantResourceCount INT,
+    nonCompliantPolicyCount INT
+)
+GO
+
+DROP PROC IF EXISTS insertRunResourceGroupValues001
+GO
+
+CREATE PROCEDURE insertRunResourceGroupValues001 (
+    @runGUID CHAR(36), 
+    @subscriptionId CHAR(36),
+    @resourceGroup CHAR(90),
+    @level1TagValue VARCHAR(256) = NULL, 
+    @level2TagValue VARCHAR(256) = NULL, 
+    @level3TagValue VARCHAR(256) = NULL, 
+    @environmentTagValue VARCHAR(256) = NULL, 
+    @criticalityTagValue VARCHAR(256) = NULL,
+    @compliantResourceCount INT = NULL,
+    @nonCompliantResourceCount INT = NULL,
+    @nonCompliantPolicyCount INT = NULL
+    ) AS
+
+    INSERT INTO runResourceGroupValues (
+        runGUID, 
+        subscriptionId, 
+        resourceGroup, 
+        level1TagValue, 
+        level2TagValue, 
+        level3TagValue, 
+        environmentTagValue, 
+        criticalityTagValue,
+        compliantResourceCount,
+        nonCompliantResourceCount,
+        nonCompliantPolicyCount
+    ) VALUES (
+        @runGUID, 
+        @subscriptionId, 
+        @resourceGroup, 
+        @level1TagValue, 
+        @level2TagValue, 
+        @level3TagValue, 
+        @environmentTagValue, 
+        @criticalityTagValue,
+        @compliantResourceCount,
+        @nonCompliantResourceCount,
+        @nonCompliantPolicyCount
+    )
+GO
+
+GRANT EXEC ON insertRunResourceGroupValues001 TO [adf-ne-techdebtleague]
+GO
+
+
+DROP TABLE IF EXISTS staging_recommendations
+GO
+
+CREATE TABLE staging_recommendations(
+    id VARCHAR(8000),
+    resourceId VARCHAR(8000),
+    subscriptionId CHAR(36),
+    resourceGroup VARCHAR(90),
+    category VARCHAR(256),
+    assessmentKey VARCHAR(256),
+    score INT,
+    impact VARCHAR(50),
+    impactedField VARCHAR(255),
+    impactedValue VARCHAR(255),
+    lastUpdated DATETIME,
+    recommendationTypeId VARCHAR(255),
+    problem VARCHAR(255),
+    solution VARCHAR(255)
+)
+GO
+
+GRANT SELECT, INSERT ON staging_recommendations TO [adf-ne-techdebtleague]
+GO
+
+
+DROP PROC IF EXISTS clearStagingRecommendations001
+GO
+
+CREATE PROCEDURE clearStagingRecommendations001 AS
+    DELETE FROM staging_recommendations
+GO
+
+GRANT EXEC ON clearStagingRecommendations001 TO [adf-ne-techdebtleague]
+GO
+
+
+DROP PROC IF EXISTS clearStagingPolicyRecords001
+GO
+
+CREATE PROCEDURE clearStagingPolicyRecords001 AS
+    DELETE FROM staging_policyRecords
+GO
+
+GRANT EXEC ON clearStagingPolicyRecords001 TO [adf-ne-techdebtleague]
+GO
+
+DROP TABLE IF EXISTS config
+GO
+
+CREATE TABLE config (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    groupLevel1TagName VARCHAR(255),
+    groupLevel2TagName VARCHAR(255),
+    groupLevel3TagName VARCHAR(255),
+    EnvironmentTagName VARCHAR(255),
+    EnvironmentProduction VARCHAR(255),
+    EnvironmentProductionMultiplier TINYINT,
+    EnvironmentNonProduction VARCHAR(255),
+    EnvironmentNonProductionMultiplier TINYINT,
+    EnvironmentDev VARCHAR(255),
+    EnvironmentDevMultiplier TINYINT,
+    CriticalityTagName VARCHAR(255),
+    CriticalityTier0 VARCHAR(255),
+    CriticalityTier0Multiplier TINYINT,
+    CriticalityTier1 VARCHAR(255),
+    CriticalityTier1Multiplier TINYINT,
+    CriticalityTier2 VARCHAR(255),
+    Criticalitytier2Multiplier TINYINT,
+    activeFrom DATETIME,
+    activeTo DATETIME,
+    isCurrent BIT
+)
+GO
+
+INSERT INTO config (
+    groupLevel1TagName,
+    groupLevel2TagName,
+    groupLevel3TagName,
+    EnvironmentTagName,
+    EnvironmentProduction,
+    EnvironmentProductionMultiplier,
+    EnvironmentNonProduction,
+    EnvironmentNonProductionMultiplier,
+    EnvironmentDev,
+    EnvironmentDevMultiplier,
+    CriticalityTagName,
+    CriticalityTier0,
+    CriticalityTier0Multiplier,
+    CriticalityTier1,
+    CriticalityTier1Multiplier,
+    CriticalityTier2,
+    Criticalitytier2Multiplier,
+    activeFrom,
+    isCurrent
+) VALUES (
+    'BusinessUnit',
+    'Product',
+    'Component',
+    'Environment',
+    'Production',
+    3,
+    'NonProduction',
+    2,
+    'Dev',
+    1,
+    'Criticality',
+    'MissionCritical',
+    3,
+    'Tier1',
+    2,
+    'Tier2',
+    1,
+    GETDATE(),
+    1
+)
+GO
+
+DROP PROC IF EXISTS getConfig001
+GO
+
+CREATE PROC getConfig001 AS 
+    SELECT TOP 1 
+        groupLevel1TagName,
+        groupLevel2TagName,
+        groupLevel3TagName,
+        EnvironmentTagName,
+        EnvironmentProduction,
+        EnvironmentProductionMultiplier,
+        EnvironmentNonProduction,
+        EnvironmentNonProductionMultiplier,
+        EnvironmentDev,
+        EnvironmentDevMultiplier,
+        CriticalityTagName,
+        CriticalityTier0,
+        CriticalityTier0Multiplier,
+        CriticalityTier1,
+        CriticalityTier1Multiplier,
+        CriticalityTier2,
+        Criticalitytier2Multiplier
+    FROM 
+        config
+    WHERE 
+        isCurrent = 1
+GO
+
+GRANT EXEC ON getConfig001 TO [adf-ne-techdebtleague]
+GO
+
+DROP TABLE IF EXISTS staging_budgets
+GO
+
+CREATE TABLE staging_budgets  (
+    runGUID CHAR(36),
+    subscriptionId CHAR(36),
+    resourceGroup VARCHAR(90),
+    id VARCHAR(2000),
+    [name] VARCHAR(255),
+    amount SMALLMONEY,
+    timeGrain VARCHAR(50),
+    startDate DATETIME,
+    endDate DATETIME,
+    currentSpend SMALLMONEY,
+    currency VARCHAR(10),
+    budgetFilter VARCHAR(8000)
+)
+GO
+
+GRANT SELECT, INSERT ON  staging_budgets TO [adf-ne-techdebtleague]
+GO
+
+DROP TABLE IF EXISTS runHistory
+GO
+
+CREATE TABLE runHistory (
+    runGUID CHAR(36) PRIMARY KEY,
+    startDate DATETIME,
+    endDate DATETIME,
+    successful BIT
+)
+GO
+
+DROP PROC IF EXISTS insertNewRun001 
+GO
+
+CREATE PROC insertNewRun001 (@runGUID CHAR(36)) AS
+    INSERT INTO runHistory (
+        runGUID,
+        startDate
+    ) VALUES (
+        @runGUID,
+        GETDATE()
+    )
+GO
+
+GRANT EXEC ON insertNewRun001 TO [adf-ne-techdebtleague]
+
+DROP PROC IF EXISTS updateRun001 
+GO
+
+CREATE PROC updateRun001 (@runGUID CHAR(36), @success BIT) AS
+    UPDATE runHistory SET endDate = GETDATE(), successful = @success WHERE runGUID = @runGUID
+GO
+
+GRANT EXEC ON updateRun001 TO [adf-ne-techdebtleague]
+
+DROP TABLE IF EXISTS budgets
+GO
+
+CREATE TABLE budgets (
+    id VARCHAR(2000) PRIMARY KEY,
+    [name] VARCHAR(255),
+    subscriptionId CHAR(36),
+    resourceGroup VARCHAR(90),
+    amount SMALLMONEY,
+    timeGrain VARCHAR(50),
+    startDate DATETIME,
+    endDate DATETIME,
+    currentSpend SMALLMONEY,
+    currency VARCHAR(10),
+    budgetFilter VARCHAR(8000),
+    dateAdded DATETIME,
+    lastUpdated DATETIME,
+    lastrunGUID CHAR(36),
+)
+GO
+
+DROP PROC IF EXISTS getBudgets001
+GO
+
+CREATE PROC getBudgets001 (@runGUID CHAR(36)) AS 
+    SELECT 
+        id, 
+        [name],
+        [subscriptionId],
+        resourceGroup,
+        amount,
+        timeGrain,
+        startDate,
+        endDate,
+        currentSpend,
+        currency,
+        budgetFilter,
+        dateAdded,
+        lastUpdated,
+        lastrunGUID
+    FROM
+        budgets
+    WHERE  
+        lastrunGUID = @runGUID
+GO
+
+GRANT EXEC ON getBudgets001 TO [adf-ne-techdebtleague]
+
+DROP TABLE IF EXISTS staging_budgets
+GO
+
+CREATE TABLE staging_budgets  (
+    id VARCHAR(2000) PRIMARY KEY,
+    [name] VARCHAR(255),
+    subscriptionId CHAR(36),
+    resourceGroup VARCHAR(90),
+    amount SMALLMONEY,
+    timeGrain VARCHAR(50),
+    startDate DATETIME,
+    endDate DATETIME,
+    currentSpend SMALLMONEY,
+    currency VARCHAR(10),
+    budgetFilter VARCHAR(8000)
+)
+GO
+
+GRANT SELECT, INSERT, DELETE ON  staging_budgets TO [adf-ne-techdebtleague]
+GO
+
+DROP PROC IF EXISTS mergeBudgets001
+GO
+
+CREATE PROCEDURE mergeBudgets001 @runGUID CHAR(36) AS
+SET NOCOUNT ON;  
+  
+MERGE budgets AS target
+	USING (SELECT * FROM staging_budgets) AS source
+	ON (target.id = source.id)
+	WHEN MATCHED THEN
+		UPDATE SET lastUpdated = GETDATE(), lastRunGUID = @runGUID
+	WHEN NOT MATCHED THEN
+		INSERT (id, [name], subscriptionId, resourceGroup, amount, timeGrain, startDate, endDate, currentSpend, currency, budgetFilter, dateAdded, lastUpdated, lastrunGUID)
+		VALUES (source.id, source.name, source.subscriptionId, source.resourceGroup, source.amount, source.timeGrain, source.startDate, source.endDate, source.currentSpend, source.currency, source.budgetFilter, GETDATE(), GETDATE(), @runGUID);
+
+GO
+
+GRANT EXEC ON mergeBudgets001 TO [adf-ne-techdebtleague]
+GO
+
+DROP TABLE IF EXISTS budgetHistory
+GO
+
+CREATE TABLE budgetHistory (
+    id UNIQUEIDENTIFIER DEFAULT NEWID() PRIMARY KEY,
+    budgetId VARCHAR(2000),
+    budgetMonth TINYINT,
+    budgetYear SMALLINT,
+    spend SMALLMONEY,
+    variance SMALLMONEY
+)
+GO
+
+DROP PROCEDURE IF EXISTS insertBudgetHistory001
+GO
+
+CREATE PROC insertBudgetHistory001 (
+    @budgetId VARCHAR(2000),
+    @budgetMonth TINYINT,
+    @budgetYear SMALLINT,
+    @spend SMALLMONEY,
+    @variance SMALLMONEY) AS
+
+    INSERT INTO budgetHistory (budgetId, budgetMonth, budgetYear, spend, variance) 
+        VALUES (@budgetId, @budgetMonth, @budgetYear, @spend, @variance)
+GO
+
+GRANT EXEC ON insertBudgetHistory001 TO [adf-ne-techdebtleague]

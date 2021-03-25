@@ -1,0 +1,43 @@
+h1 Edit Group
+
+ div(class="row my-3")
+        div(class="col-md-4 py-1")
+            h2 Group Information
+
+            form()
+                div(class="form-group")
+                    label(for="groupName" ) Group Name:
+                    input(type="text", class="form-control", id="groupName") #{group.name}
+                    small(id="groupNameHelp", class="form-text text-muted") This would be a configurable Label
+
+                    label(for="groupLevel" ) Group Level:
+                    input(type="text", class="form-control .form-control-plaintext", id="groupName" readonly) #{group.name}
+                    small(id="groupLevelHelp", class="form-text text-muted") Group Level (this cannot be changed once set)
+
+                    label(for=ownerEmail) Owner Email:
+                    input(type="text", class="form-control", id="ownerEmail") #{group.ownerEmail}
+                    small(id="ownerEmailHelp", class="form-text text-muted") Email Address for the owner of this group level
+
+                    label(for=teamEmail) Team Email:
+                    input(type="text", class="form-control", id="departmentEmail") #{group.departmentEmail}
+                    small(id="departmentEmailHelp", class="form-text text-muted") Email Address for the team of this group level
+
+                    h2 Available Cost Codes     
+                        ul()
+                            li Cost Code 1
+                            li Cost Code 2
+                            li Cost Code n
+
+                    h2 2nd Level Groups (configurable label)
+                    
+                        ul()
+                            li Group 1
+                            li Group n
+                    
+                    
+                    Tag Transition
+
+                        Replace IO139098 with IO280281
+                    
+                    p
+                        Labels would be configurable

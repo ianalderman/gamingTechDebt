@@ -1,0 +1,172 @@
+extends layout
+
+mixin gl1Row(gl1Index, groupLevel1)
+  tr()
+    td(class="gl1") <i class="bi bi-plus-circle", id="icon-gl1-#{gl1Index}", data-toggle="", onClick="toggleHidden('.gl2-gl1-#{gl1Index}')", data-target='.gl2, .gl2-gl1-#{gl1Index}', aria-expanded="false", aria-controls='.gl2, .gl2-gl1-{#gl1Index}'></i>&nbsp;#{groupLevel1.Name}
+    td(class="gl2 ") &nbsp;
+    td(class="env ") &nbsp;
+    td(class="tier ") &nbsp;
+    td(class="gl1 security") #{groupLevel1.Security}
+    td(class="gl1 reliability") #{groupLevel1.Reliability}
+    td(class="gl1 cost") #{groupLevel1.Cost}
+    td(class="gl1 operations") #{groupLevel1.Operations}
+    td(class="gl1 performance") #{groupLevel1.Performance}
+    td(class="gl1 policy") #{groupLevel1.Policy}
+    td(class="gl1 total") #{groupLevel1.Total}
+
+mixin gl2Row(gl1Index, gl2Index, groupLevel2)
+  - gl2Labels += groupLevel2.Name + ","
+  - gl2Values += groupLevel2.Points + ","
+  - gl2CategoryLabels = "Security, Reliability, Cost, Operational Excellence, Performance, Policy"
+  - gl2SecurityValues += groupLevel2.Security.Points
+  - gl2ReliabilityValues += groupLevel2.Reliability.Points
+  - gl2CostValues += groupLevel2.Cost.Points
+  - gl2OperationExcellence += groupLevel2.OperationalExcellence.Points
+  - gl2Performance += groupLevel2.Performance.Points
+  - gl2PolicyValues += groupLevel2.Policy.Points
+
+  tr(class='hiddenRow gl2-gl1-' + gl1Index)
+    td(class="gl1") &nbsp;
+    td(class="gl2 ") <i class="bi bi-plus-circle", id="icon-gl2-gl1-#{gl1Index}", onClick="toggleHidden('.env-gl2-#{gl2Index}-gl1-#{gl1Index}')", data-toggle="", data-target='.env, .env-gl2-#{gl2Index}-gl1-#{gl1Index}', aria-expanded="false", aria-controls='.env, .env-gl2-#{gl2Index}-gl1-#{gl1Index}'></i> &nbsp;#{groupLevel2.Name}
+    td(class="env ") &nbsp;
+    td(class="tier ") &nbsp;
+    td(class="security") #{groupLevel2.Security.Points}
+    td(class="gl2 reliability") #{groupLevel2.Reliability.Points}
+    td(class="gl2 cost") #{groupLevel2.Cost.Points}
+    td(class="gl2 operations") #{groupLevel2.OperationalExcellence.Points}
+    td(class="gl2 performance") #{groupLevel2.Performance.Points}
+    td(class="gl2 policy") #{groupLevel2.Policy.Points}
+    td(class="total") #{groupLevel2.Points}
+  +envRow(groupLevel2, "Production", 'env-gl2-' + gl2Index + '-gl1-' + gl1Index)
+  +envRow(groupLevel2, "nonProduction", 'env-gl2-' + gl2Index + '-gl1-' + gl1Index)
+  +envRow(groupLevel2, "dev", 'env-gl2-' + gl2Index + '-gl1-' + gl1Index)
+  +envRow(groupLevel2, "uknownEnvironment", 'env-gl2-' + gl2Index + '-gl1-' + gl1Index)
+
+mixin envRow(groupLevel2, env, idroot)
+  - gl2EnvSecurityValues += groupLevel2[env].Security.Points
+  - gl2EnvReliabilityValues += groupLevel2[env].Reliability.Points
+  - gl2EnvCostValues += groupLevel2[env].Cost.Points
+  - gl2EnvOperationExcellence += groupLevel2[env].OperationalExcellence.Points
+  - gl2EnvPerformance += groupLevel2[env].Performance.Points
+  - gl2EnvPolicy += groupLevel2[env].Policy.Points
+
+  tr(class='' + idroot + ' hiddenRow')
+    td(class="gl1") &nbsp;
+    td(class="gl2") &nbsp;
+    td(class="env ") <i class="bi bi-plus-circle", id="icon-#{idroot}", onClick="toggleHidden('.tier-#{env}-#{idroot}')", data-toggle="", data-target='.tier, .tier-#{idroot}', aria-expanded="false", aria-controls='.tier, .tier-#{idroot}'></i>&nbsp;#{groupLevel2[env].Name}
+    td(class="tier ") &nbsp;
+    td(class="security")  #{groupLevel2[env].Security.Points}
+    td(class="reliability") #{groupLevel2[env].Reliability.Points}
+    td(class="cost") #{groupLevel2[env].Cost.Points}
+    td(class="operations") #{groupLevel2[env].OperationalExcellence.Points}
+    td(class="performance") #{groupLevel2[env].Performance.Points}
+    td(class="policy") #{groupLevel2[env].Policy.Points}
+    td(class="total") #{groupLevel2[env].Points}
+  +tierRow(groupLevel2, env, "Tier0", idroot)
+  +tierRow(groupLevel2, env, "Tier1", idroot)
+  +tierRow(groupLevel2, env, "Tier2", idroot)
+  +tierRow(groupLevel2, env, "UnknownTier", idroot)
+
+mixin tierRow(groupLevel2, env, tier, idRoot)
+  tr(class='tier-' + env + '-' + idRoot  + ' hiddenRow')
+    td(class="gl1") &nbsp;
+    td(class="gl2 ") &nbsp;
+    td(class="env ") &nbsp;
+    td(class="tier ") #{groupLevel2[env][tier].Name}
+    td(class="tier security ") #{groupLevel2[env][tier].Security.Points}
+    td(class="reliability") #{groupLevel2[env][tier].Reliability.Points}
+    td(class="cost") #{groupLevel2[env][tier].Cost.Points}
+    td(class="operations") #{groupLevel2[env][tier].OperationalExcellence.Points}
+    td(class="performance") #{groupLevel2[env][tier].Performance.Points}
+    td(class="policy") #{groupLevel2[env][tier].Policy.Points}
+    td(class="tot") #{groupLevel2[env][tier].Points}
+
+mixin chartDivValuesAndLabels()
+  - gl2Labels = gl2Labels.substring(0, gl2Labels.length - 1);
+  - gl2Values = gl2Values.substring(0, gl2Values.length - 1);
+  - var gl2CategoryValues = "" + gl2SecurityValues + "," + gl2ReliabilityValues + "," + gl2CostValues + "," + gl2OperationExcellence + "," + gl2Performance + "," + gl2PolicyValues
+  - var gl2EnvCategoryValues = "" + gl2EnvSecurityValues + "," + gl2EnvReliabilityValues + "," + gl2EnvCostValues + "," + gl2EnvOperationExcellence + "," + gl2EnvPerformance + "," + gl2EnvPolicy
+  
+  div(id="gl2DoughnutData", data-labels=gl2Labels, data-values=gl2Values)
+  div(id="gl2CategoryDoughnutData", data-labels=gl2CategoryLabels, data-values=gl2CategoryValues)
+  div(id="gl2EnvironmentCategoryDoughnutData", data-labels=gl2CategoryLabels, data-values=gl2EnvCategoryValues)
+
+block content
+  - var gl2Labels = ""
+  - var gl2Values = ""
+  - var gl2SecurityValues = 0
+  - var gl2ReliabilityValues = 0
+  - var gl2CostValues = 0
+  - var gl2PolicyValues = 0
+  - var gl2OperationExcellence = 0
+  - var gl2Performance = 0
+  - var gl2EnvCategoryLabels = ""
+  - var gl2EnvSecurityValues = 0
+  - var gl2EnvReliabilityValues = 0
+  - var gl2EnvCostValues = 0
+  - var gl2EnvOperationExcellence = 0
+  - var gl2EnvPerformance = 0
+  - var gl2Performance = 0
+  - var gl2EnvPolicy = 0
+
+  h1=title
+  h1 Lock down to specific users or groups can do that via reading claims?
+  h1 Add Policy Compliance %
+  p Welcome to #{title} running in #{process.env.NODE_ENV} database connected: #{connected}
+      div(class="row my-3")
+        div(class="col-md-4 py-1")
+            div(class="card")
+                    canvas(id="gl2Doughnut")
+        div(class="col-md-4 py-1")
+            div(class="card")
+                    canvas(id="gl2CategoryDoughnut")
+        div(class="col-md-4 py-1")
+            div(class="card")
+                    canvas(id="gl2EnvironmentCategoryDoughnut")
+
+        table(class="table table-responsive w-100 table-hover table-striped", style="display:table;overflow-x:scroll;")
+            thead
+              tr
+                th() Level 1
+                th(class="gl2") Level 2
+                th(class="env") Environment
+                th(class="tier") Tier
+                th() Security
+                th() Reliability
+                th() Cost
+                th() Operations
+                th() Performance
+                th() Policy
+                th() Total
+            
+            each groupLevel1, gl1Index in leaderBoard
+              +gl1Row(gl1Index, groupLevel1)
+              each groupLevel2, gl2Index in groupLevel1.groupingLevel2
+                +gl2Row(gl1Index, gl2Index, groupLevel2)
+
+        +chartDivValuesAndLabels
+
+
+
+  h2 Have you thought about?
+  p Cost: Can we compare cost for mission critical across tags?  Need to somehow take into account number of resources?  Avg out?
+  p Cost: Get Budgets, check scope to see which gl1s and 2s are covered and score.  Get alerts for budgets and score (more alerts = bad, what time period?)
+  p Checking for pipeline success rates?  Code Coverage?  Budgets? Setting sets how long to check alerts for 3 months, 6 months Policy Compliance?
+  p https://docs.microsoft.com/en-us/azure/governance/resource-graph/samples/advanced?tabs=azure-portal#count-gcnoncompliant can we use resource graph to find resources by tag and filter for non compliance?
+  p You shuld have a look at these most common recommendations
+
+    script.
+      //myDoughnut = document.getElementById("gl1Doughnut")
+      //myDoughnut = $('#gl1Doughnut')
+      //alert('#{gl2Labels}')
+      //document.onload = drawDoughnut("gl1Doughnut",  $('#gl1Doughnut').data('values'),  $('#gl1Doughnut').data('labels'), "Group Level 1 Breakdown")
+      document.onload = drawDoughnut("gl2Doughnut",  $('#gl2DoughnutData').data('values'),  $('#gl2DoughnutData').data('labels'), "Group Level 2 Breakdown")
+      document.onload = drawDoughnut("gl2CategoryDoughnut",  $('#gl2CategoryDoughnutData').data('values'),  $('#gl2CategoryDoughnutData').data('labels'), "Group Level 2 Category Breakdown")
+      document.onload = drawDoughnut("gl2EnvironmentCategoryDoughnut",  $('#gl2EnvironmentCategoryDoughnutData').data('values'),  $('#gl2CategoryDoughnutData').data('labels'), "Environment Category Breakdown")
+      
+      /*
+      document.onload = function drawYummyDoughnuts() {
+        //document.onload = drawDoughnut("sugarRingDoughnut", "10,20,30", "Red,Blue,Green")
+        
+        drawDoughnut("envDoughnut", "10,20,30", "Red,Blue,Green")
+      }*/
