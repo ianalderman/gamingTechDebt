@@ -1,7 +1,7 @@
 const { reject } = require("async");
 const { request } = require("express");
 const sql = require("mssql");
-const { connect } = require("../app");
+//const { connect } = require("../app");
 var connected = false;
 
 sql.on('error', err => {
@@ -42,7 +42,7 @@ const openConnection = () => new Promise((resolve, reject) => {
         }
     });   
 
-    connectionPool.connect()
+    //connectionPool.connect()
 
     //connected = true;
     //return true;

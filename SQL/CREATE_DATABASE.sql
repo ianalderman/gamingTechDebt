@@ -1,10 +1,7 @@
 
 -- UI Login
-USE MASTER
-CREATE LOGIN LeaderBoardApp WITH PASSWORD = <YOUR PASSWORD HERE>;
-GO
 USE leaderboard
-CREATE USER LeaderBoardApp FOR LOGIN LeaderBoardApp;
+CREATE USER LeaderBoardApp WITH PASSWORD = <YOUR PASSWORD HERE>;
 GO
 
 -- Run Objects
